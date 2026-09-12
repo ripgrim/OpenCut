@@ -213,12 +213,7 @@ fn end_of_stream_propagates_as_decode_error() {
 
     let plan = RenderPlan {
         output: test_output(),
-        nodes: vec![node(
-            1,
-            source,
-            stream,
-            RationalTime::new(1, 1).unwrap(),
-        )],
+        nodes: vec![node(1, source, stream, RationalTime::new(1, 1).unwrap())],
     };
 
     assert!(matches!(

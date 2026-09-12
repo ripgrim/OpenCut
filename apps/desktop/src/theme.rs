@@ -1,6 +1,6 @@
 use std::{f32::consts::PI, sync::OnceLock};
 
-use gpui::{rems, Hsla, Rems, Rgba, Window, WindowAppearance};
+use gpui::{Hsla, Rems, Rgba, Window, WindowAppearance, rems};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SemanticColors {
@@ -215,8 +215,14 @@ mod tests {
         let light = Theme::for_appearance(WindowAppearance::Light);
         let dark = Theme::for_appearance(WindowAppearance::Dark);
 
-        assert!(std::ptr::eq(light, Theme::for_appearance(WindowAppearance::VibrantLight)));
-        assert!(std::ptr::eq(dark, Theme::for_appearance(WindowAppearance::VibrantDark)));
+        assert!(std::ptr::eq(
+            light,
+            Theme::for_appearance(WindowAppearance::VibrantLight)
+        ));
+        assert!(std::ptr::eq(
+            dark,
+            Theme::for_appearance(WindowAppearance::VibrantDark)
+        ));
         assert_ne!(light.colors.background, dark.colors.background);
     }
 }

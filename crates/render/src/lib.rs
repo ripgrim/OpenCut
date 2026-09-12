@@ -48,10 +48,7 @@ impl<'a> Renderer<'a> {
 
     pub fn register_source(&mut self, source: &Source) -> Result<SourceId, RenderError> {
         let id = self.decoder.open(source).map_err(RenderError::Decode)?;
-        let streams = self
-            .decoder
-            .streams(id)
-            .map_err(RenderError::Decode)?;
+        let streams = self.decoder.streams(id).map_err(RenderError::Decode)?;
         self.registry.insert(id, streams);
         Ok(id)
     }
@@ -94,12 +91,8 @@ impl<'a> Renderer<'a> {
             });
         }
 
-        self.composer.compose(
-            self.device,
-            self.queue,
-            &plan.output,
-            &layers,
-        )
+        self.composer
+            .compose(self.device, self.queue, &plan.output, &layers)
     }
 
     fn resolve_frame(
@@ -110,13 +103,17 @@ impl<'a> Renderer<'a> {
         let cache_key_time = stream
             .frame_rate
             .frame_index_floor(node.source.time)
-            .map_err(|_| RenderError::Decode(DecodeError::DecodingFailed("time overflow".into())))?;
-        let cache_key = stream
-            .frame_rate
-            .frame_start(cache_key_time)
-            .map_err(|_| RenderError::Decode(DecodeError::DecodingFailed("time overflow".into())))?;
+            .map_err(|_| {
+                RenderError::Decode(DecodeError::DecodingFailed("time overflow".into()))
+            })?;
+        let cache_key = stream.frame_rate.frame_start(cache_key_time).map_err(|_| {
+            RenderError::Decode(DecodeError::DecodingFailed("time overflow".into()))
+        })?;
 
-        if let Some(frame) = self.cache.get(node.source.source, node.source.stream, cache_key) {
+        if let Some(frame) = self
+            .cache
+            .get(node.source.source, node.source.stream, cache_key)
+        {
             return Ok(frame.clone());
         }
 

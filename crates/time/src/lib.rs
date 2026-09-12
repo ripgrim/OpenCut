@@ -215,7 +215,11 @@ pub mod floats {
         Round,
     }
 
-    fn from_seconds(seconds: f64, max_denominator: u64, snap: SecondsSnap) -> Result<RationalTime, TimeError> {
+    fn from_seconds(
+        seconds: f64,
+        max_denominator: u64,
+        snap: SecondsSnap,
+    ) -> Result<RationalTime, TimeError> {
         if !seconds.is_finite() {
             return Err(TimeError::Overflow);
         }
@@ -243,7 +247,12 @@ enum FrameSnap {
     Ceil,
 }
 
-fn frame_index_at(time: RationalTime, rate_n: u64, rate_d: u64, snap: FrameSnap) -> Result<i64, TimeError> {
+fn frame_index_at(
+    time: RationalTime,
+    rate_n: u64,
+    rate_d: u64,
+    snap: FrameSnap,
+) -> Result<i64, TimeError> {
     if time.n == 0 {
         return Ok(0);
     }
@@ -343,6 +352,10 @@ mod tests {
         let fps = FrameRate::new(30, 1).unwrap();
         let t = RationalTime::new(1, 30).unwrap();
         assert_eq!(fps.frame_index_floor(t).unwrap(), 1);
-        assert_eq!(fps.frame_index_floor(RationalTime::new(0, 1).unwrap()).unwrap(), 0);
+        assert_eq!(
+            fps.frame_index_floor(RationalTime::new(0, 1).unwrap())
+                .unwrap(),
+            0
+        );
     }
 }

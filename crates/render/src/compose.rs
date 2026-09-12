@@ -1,5 +1,7 @@
-use crate::plan::{Affine, Blend, Crop, GpuError, Opacity, Output, OutputFormat, OutputTexture, RenderError};
 use crate::pixels::output_format_to_wgpu;
+use crate::plan::{
+    Affine, Blend, Crop, GpuError, Opacity, Output, OutputFormat, OutputTexture, RenderError,
+};
 
 #[derive(Debug, Clone)]
 pub struct Layer {

@@ -1,4 +1,4 @@
-use gpui::{div, prelude::*, Context, Window};
+use gpui::{Context, Window, div, prelude::*};
 
 use crate::theme::ActiveTheme;
 

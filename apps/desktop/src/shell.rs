@@ -1,4 +1,4 @@
-use gpui::{div, prelude::*, App, Context, Entity, Window};
+use gpui::{App, Context, Entity, Window, div, prelude::*};
 
 use crate::panels::{Browser, Inspector, Preview, Timeline};
 use crate::theme::ActiveTheme;

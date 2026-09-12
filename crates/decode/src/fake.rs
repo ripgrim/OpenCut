@@ -76,13 +76,7 @@ impl Decoder for FakeDecoder {
             duration: config.duration,
         };
 
-        self.sources.insert(
-            id.raw(),
-            OpenSource {
-                stream,
-                config,
-            },
-        );
+        self.sources.insert(id.raw(), OpenSource { stream, config });
 
         Ok(id)
     }
@@ -117,7 +111,8 @@ impl Decoder for FakeDecoder {
             .frame_start(frame_index)
             .map_err(|_| DecodeError::DecodingFailed("frame time overflow".into()))?;
 
-        let len = Frame::expected_byte_len(open.stream.width, open.stream.height, open.config.format);
+        let len =
+            Frame::expected_byte_len(open.stream.width, open.stream.height, open.config.format);
         let mut pixels = vec![0u8; len].into_boxed_slice();
         fill_solid(&mut pixels, open.config.format, open.config.color);
 
@@ -180,9 +175,7 @@ mod tests {
     #[test]
     fn read_frame_time_is_floor_of_requested_time() {
         let mut decoder = decoder();
-        let source = decoder
-            .open(&Source::Bytes(Arc::from([0u8; 0])))
-            .unwrap();
+        let source = decoder.open(&Source::Bytes(Arc::from([0u8; 0]))).unwrap();
         let stream = decoder.streams(source).unwrap()[0].id;
         let requested = RationalTime::new(1, 30).unwrap();
         let frame = decoder.read_frame(source, stream, requested).unwrap();
@@ -192,9 +185,7 @@ mod tests {
     #[test]
     fn streams_report_declared_metadata() {
         let mut decoder = decoder();
-        let source = decoder
-            .open(&Source::Bytes(Arc::from([0u8; 0])))
-            .unwrap();
+        let source = decoder.open(&Source::Bytes(Arc::from([0u8; 0]))).unwrap();
         let streams = decoder.streams(source).unwrap();
         assert_eq!(streams.len(), 1);
         assert_eq!(streams[0].width, 4);
@@ -209,7 +200,11 @@ mod tests {
         let missing = SourceId::new(999);
         assert_eq!(decoder.streams(missing), Err(DecodeError::SourceNotFound));
         assert_eq!(
-            decoder.read_frame(missing, SourceStreamId::new(1), RationalTime::new(0, 1).unwrap()),
+            decoder.read_frame(
+                missing,
+                SourceStreamId::new(1),
+                RationalTime::new(0, 1).unwrap()
+            ),
             Err(DecodeError::SourceNotFound)
         );
     }
@@ -217,9 +212,7 @@ mod tests {
     #[test]
     fn unknown_stream_errors() {
         let mut decoder = decoder();
-        let source = decoder
-            .open(&Source::Bytes(Arc::from([0u8; 0])))
-            .unwrap();
+        let source = decoder.open(&Source::Bytes(Arc::from([0u8; 0]))).unwrap();
         assert_eq!(
             decoder.read_frame(
                 source,
@@ -233,9 +226,7 @@ mod tests {
     #[test]
     fn read_frame_after_close_errors() {
         let mut decoder = decoder();
-        let source = decoder
-            .open(&Source::Bytes(Arc::from([0u8; 0])))
-            .unwrap();
+        let source = decoder.open(&Source::Bytes(Arc::from([0u8; 0]))).unwrap();
         let stream = decoder.streams(source).unwrap()[0].id;
         decoder.close(source).unwrap();
         assert_eq!(
@@ -247,9 +238,7 @@ mod tests {
     #[test]
     fn read_frame_at_or_past_duration_errors() {
         let mut decoder = decoder();
-        let source = decoder
-            .open(&Source::Bytes(Arc::from([0u8; 0])))
-            .unwrap();
+        let source = decoder.open(&Source::Bytes(Arc::from([0u8; 0]))).unwrap();
         let stream = decoder.streams(source).unwrap()[0].id;
         let duration = RationalTime::new(1, 1).unwrap();
         assert_eq!(

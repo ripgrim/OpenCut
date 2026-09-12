@@ -345,9 +345,7 @@ fn cropped_node_renders_only_cropped_region() {
 
     let out = renderer.render(&plan).unwrap();
     let pixels = readback_rgba8(&out.texture, &device, &queue, 8, 8).unwrap();
-    let px = |x: usize, y: usize| -> [u8; 4] {
-        pixels[(y * 8 + x) * 4..][..4].try_into().unwrap()
-    };
+    let px = |x: usize, y: usize| -> [u8; 4] { pixels[(y * 8 + x) * 4..][..4].try_into().unwrap() };
 
     // Inside the placed crop: green proves we sampled from x >= 4, not from x = 0.
     assert_eq!(px(0, 0), [0, 180, 0, 255]);
