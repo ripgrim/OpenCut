@@ -5,7 +5,7 @@ layer: 'library'
 
 tasks:
   test:
-    command: 'cargo test -p decode --locked'
+    command: 'cargo test -p decode --all-features --locked'
     inputs:
       - 'src/**/*'
       - 'tests/**/*'

@@ -7,11 +7,14 @@ license.workspace = true
 [features]
 default = []
 fake = []
+mp4 = ["dep:re_mp4", "dep:openh264"]
 
 [dependencies]
 time = { workspace = true }
 thiserror = { workspace = true }
 bytemuck = { workspace = true }
+re_mp4 = { version = "0.5", optional = true }
+openh264 = { version = "0.9", optional = true }
 
 [dev-dependencies]
-decode = { path = ".", features = ["fake"] }
+decode = { path = ".", features = ["fake", "mp4"] }

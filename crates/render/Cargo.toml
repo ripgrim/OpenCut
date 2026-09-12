@@ -16,7 +16,7 @@ thiserror = { workspace = true }
 bytemuck = { workspace = true }
 
 [dev-dependencies]
-decode = { workspace = true, features = ["fake"] }
+decode = { workspace = true, features = ["fake", "mp4"] }
 pollster = "0.4"
 
 [[test]]

@@ -2,7 +2,9 @@
 
 use std::sync::Arc;
 
-use decode::{Decoder, FakeDecoder, FakeDecoderConfig, PixelFormat, Source, SourceStreamId};
+use decode::{
+    Decoder, FakeDecoder, FakeDecoderConfig, Mp4Decoder, PixelFormat, Source, SourceStreamId,
+};
 use render::pixels::readback_rgba8;
 use render::{
     Affine, Blend, Crop, Node, NodeId, Opacity, Output, OutputFormat, RenderPlan, Renderer,
@@ -399,4 +401,66 @@ fn affine_transform_maps_source_to_expected_output_rectangle() {
     let outside_idx = (0 * 8 + 0) * 4;
     assert_eq!(inside, [10, 20, 30, 255]);
     assert_eq!(pixels[outside_idx..outside_idx + 4], [0, 0, 0, 0]);
+}
+
+/// The whole pipeline on a real file: MP4 demux, H.264 decode, composite, GPU upload, readback.
+#[test]
+fn real_mp4_frame_renders_through_the_pipeline() {
+    let Some((device, queue)) = headless_gpu() else {
+        eprintln!("skipping: no wgpu adapter available");
+        return;
+    };
+    // 64x64 @ 30 fps: red for 0..0.5 s, blue for 0.5..1 s. See crates/decode/tests/mp4.rs.
+    const FIXTURE: &[u8] = include_bytes!("../../decode/tests/fixtures/red_blue_64x64_30fps.mp4");
+
+    let mut decoder = Mp4Decoder::new();
+    let mut renderer = Renderer::new(&mut decoder, &device, &queue);
+    let source = renderer
+        .register_source(&Source::Bytes(Arc::from(FIXTURE)))
+        .unwrap();
+    // ffmpeg numbers the single video track 1.
+    let stream = SourceStreamId::new(1);
+
+    let plan_at = |time: RationalTime| RenderPlan {
+        output: output_8x8(),
+        nodes: vec![Node {
+            id: NodeId::new(1),
+            source: SourceRef {
+                source,
+                stream,
+                time,
+            },
+            crop: Crop {
+                x: 0,
+                y: 0,
+                w: 64,
+                h: 64,
+            },
+            transform: fill_affine(64, 64, 8, 8),
+            opacity: Opacity::new(1.0).unwrap(),
+            blend: Blend::SourceOver,
+        }],
+    };
+
+    let close = |px: [u8; 4], want: [u8; 4]| px.iter().zip(want).all(|(a, b)| a.abs_diff(b) <= 4);
+
+    let out = renderer
+        .render(&plan_at(RationalTime::new(20, 30).unwrap()))
+        .unwrap();
+    let pixels = readback_rgba8(&out.texture, &device, &queue, 8, 8).unwrap();
+    let px = center_pixel(&pixels, 8, 8);
+    assert!(
+        close(px, [0, 0, 254, 255]),
+        "expected blue at 20/30 s, got {px:?}"
+    );
+
+    let out = renderer
+        .render(&plan_at(RationalTime::new(5, 30).unwrap()))
+        .unwrap();
+    let pixels = readback_rgba8(&out.texture, &device, &queue, 8, 8).unwrap();
+    let px = center_pixel(&pixels, 8, 8);
+    assert!(
+        close(px, [253, 0, 0, 255]),
+        "expected red at 5/30 s, got {px:?}"
+    );
 }
