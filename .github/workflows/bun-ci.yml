@@ -27,11 +27,24 @@ jobs:
         with:
           fetch-depth: 0
 
+      # GPUI links against these on Linux; see apps/desktop/README.md.
+      - name: Install GPUI system libraries (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libvulkan1 libwayland-dev libx11-xcb-dev libxkbcommon-x11-dev libfontconfig-dev cmake
+
       - name: Setup toolchain
         uses: moonrepo/setup-toolchain@v0
         with:
           auto-install: true
           auto-setup: true
+
+      - name: Install JavaScript dependencies
+        run: |
+          bun install --cwd apps/web --frozen-lockfile
+          bun install --cwd apps/api --frozen-lockfile
 
       - name: Run CI
         run: moon ci

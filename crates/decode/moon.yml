@@ -1,0 +1,14 @@
+$schema: 'https://moonrepo.dev/schemas/project.json'
+
+language: 'rust'
+layer: 'library'
+
+tasks:
+  test:
+    command: 'cargo test -p decode --locked'
+    inputs:
+      - 'src/**/*'
+      - 'tests/**/*'
+      - 'Cargo.toml'
+      - '/Cargo.toml'
+      - '/Cargo.lock'

@@ -6,3 +6,6 @@ projects:
     - 'crates/*'
   sources:
     root: '.'
+
+vcs:
+  defaultBranch: 'main'
