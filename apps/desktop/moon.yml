@@ -25,4 +25,6 @@ tasks:
       - '/Cargo.toml'
       - '/Cargo.lock'
     outputs:
-      - '/target/release/opencut-desktop'
+      - '/target/release/opencut-desktop*'  # .exe on Windows
+    options:
+      runInCI: false  # check already compiles in CI; the release artifact is not consumed
