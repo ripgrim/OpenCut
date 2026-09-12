@@ -16,6 +16,8 @@
 
 ## Status
 
+This repository is an independent continuation of the OpenCut rewrite, maintained by [@ripgrim](https://github.com/ripgrim). It starts from the last engine work on [OpenCut-app/OpenCut](https://github.com/OpenCut-app/OpenCut) (the `velvet-orbit` branch: `time`, `decode`, and `render` crates) and moves forward from there. Issues and pull requests here are handled here; nothing is routed back upstream.
+
 **OpenCut is being rewritten from the ground up.** What's coming:
 
 - An Editor API
@@ -53,6 +55,13 @@ From the repo root:
 
 ```sh
 proto use    # installs the tools pinned in .prototools
+```
+
+`proto use` installs Bun itself but not the JavaScript dependencies. Install those once per app:
+
+```sh
+bun install --cwd apps/web
+bun install --cwd apps/api
 ```
 
 ```sh
