@@ -33,7 +33,7 @@ fn main() {
 
     Application::new().run(|cx: &mut App| {
         let bounds = Bounds::centered(None, size(px(960.), px(600.)), cx);
-        cx.open_window(
+        let opened = cx.open_window(
             WindowOptions {
                 titlebar: Some(TitlebarOptions {
                     title: Some(SharedString::from("OpenCut")),
@@ -52,7 +52,13 @@ fn main() {
                     Shell::new(cx)
                 })
             },
-        )
-        .expect("failed to open the main window");
+        );
+
+        // No display server, no GPU, SSH without forwarding: report and exit
+        // instead of unwinding with a panic backtrace.
+        if let Err(error) = opened {
+            eprintln!("opencut: failed to open the main window: {error:#}");
+            std::process::exit(1);
+        }
     });
 }

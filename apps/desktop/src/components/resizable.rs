@@ -69,14 +69,27 @@ impl ResizablePanelGroup {
         cx: &mut Context<Self>,
     ) {
         let bounds = event.bounds;
-        let fraction = match self.orientation {
-            Orientation::Horizontal => {
-                (event.event.position.x - bounds.left()) / (bounds.right() - bounds.left())
-            }
-            Orientation::Vertical => {
-                (event.event.position.y - bounds.top()) / (bounds.bottom() - bounds.top())
-            }
+        let (offset, extent) = match self.orientation {
+            Orientation::Horizontal => (
+                event.event.position.x - bounds.left(),
+                bounds.right() - bounds.left(),
+            ),
+            Orientation::Vertical => (
+                event.event.position.y - bounds.top(),
+                bounds.bottom() - bounds.top(),
+            ),
         };
+
+        // A collapsed group (window minimised, first layout pass) has zero extent.
+        // Dividing by it yields NaN or inf, and f32::clamp passes NaN straight
+        // through, so the split would be poisoned until the next valid drag.
+        if extent <= px(0.) {
+            return;
+        }
+        let fraction = offset / extent;
+        if !fraction.is_finite() {
+            return;
+        }
 
         self.fraction = self.clamp_fraction(fraction);
         cx.notify();
