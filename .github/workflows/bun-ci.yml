@@ -47,5 +47,12 @@ jobs:
           bun install --cwd apps/web --frozen-lockfile
           bun install --cwd apps/api --frozen-lockfile
 
-      - name: Run CI
+      # Pull requests: only what the diff touches. Pushes to main and manual runs: the
+      # whole graph, because moon ci compares HEAD~1..HEAD there and can resolve nothing.
+      - name: Run CI (affected by this PR)
+        if: github.event_name == 'pull_request'
         run: moon ci
+
+      - name: Run CI (all projects)
+        if: github.event_name != 'pull_request'
+        run: moon run :check :build :test

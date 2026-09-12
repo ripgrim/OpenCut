@@ -22,3 +22,5 @@ tasks:
     command: 'bun run deploy'
     deps:
       - '~:build'
+    options:
+      runInCI: false  # needs Cloudflare credentials; deploy explicitly
