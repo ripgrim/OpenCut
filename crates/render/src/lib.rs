@@ -1,7 +1,11 @@
 //! Product-neutral visual rendering against wgpu.
 
 mod compose;
+#[cfg(not(feature = "wgpu-tests"))]
 mod pixels;
+/// Exposed only for the `wgpu-tests` integration suite, which reads rendered textures back.
+#[cfg(feature = "wgpu-tests")]
+pub mod pixels;
 mod plan;
 mod source;
 mod validate;

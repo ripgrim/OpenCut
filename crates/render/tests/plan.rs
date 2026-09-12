@@ -47,20 +47,28 @@ struct HeadlessGpu {
     queue: wgpu::Queue,
 }
 
-fn headless_gpu() -> HeadlessGpu {
+/// Any adapter the machine exposes. Prefers a software fallback (llvmpipe/lavapipe on
+/// Linux CI) so results are deterministic, then takes hardware on any backend
+/// (DX12 on Windows, Metal on macOS). `None` means there is no GPU at all, and the
+/// caller skips instead of panicking.
+fn headless_gpu() -> Option<HeadlessGpu> {
     pollster::block_on(async {
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::VULKAN | wgpu::Backends::GL,
-            ..Default::default()
-        });
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::LowPower,
-                force_fallback_adapter: true,
-                compatible_surface: None,
-            })
-            .await
-            .expect("adapter");
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::from_env_or_default());
+        let mut adapter = None;
+        for force_fallback_adapter in [true, false] {
+            adapter = instance
+                .request_adapter(&wgpu::RequestAdapterOptions {
+                    power_preference: wgpu::PowerPreference::LowPower,
+                    force_fallback_adapter,
+                    compatible_surface: None,
+                })
+                .await
+                .ok();
+            if adapter.is_some() {
+                break;
+            }
+        }
+        let adapter = adapter?;
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some("test_device"),
@@ -70,8 +78,8 @@ fn headless_gpu() -> HeadlessGpu {
                 trace: wgpu::Trace::Off,
             })
             .await
-            .expect("device");
-        HeadlessGpu { device, queue }
+            .ok()?;
+        Some(HeadlessGpu { device, queue })
     })
 }
 
@@ -97,7 +105,10 @@ fn node(id: u64, source: SourceId, stream: SourceStreamId, color_time: RationalT
 
 #[test]
 fn unregistered_source_fails_unknown_source() {
-    let gpu = headless_gpu();
+    let Some(gpu) = headless_gpu() else {
+        eprintln!("skipping: no wgpu adapter available");
+        return;
+    };
     let mut decoder = test_decoder([255, 0, 0, 255]);
     let mut renderer = Renderer::new(&mut decoder, &gpu.device, &gpu.queue);
 
@@ -130,7 +141,10 @@ fn unregistered_source_fails_unknown_source() {
 
 #[test]
 fn registered_source_resolves_with_floored_frame_time() {
-    let gpu = headless_gpu();
+    let Some(gpu) = headless_gpu() else {
+        eprintln!("skipping: no wgpu adapter available");
+        return;
+    };
     let mut decoder = test_decoder([255, 0, 0, 255]);
     let mut renderer = Renderer::new(&mut decoder, &gpu.device, &gpu.queue);
     let source = renderer
@@ -153,7 +167,10 @@ fn registered_source_resolves_with_floored_frame_time() {
 
 #[test]
 fn release_source_invalidates_cache_and_fails_unknown_source() {
-    let gpu = headless_gpu();
+    let Some(gpu) = headless_gpu() else {
+        eprintln!("skipping: no wgpu adapter available");
+        return;
+    };
     let mut decoder = test_decoder([255, 0, 0, 255]);
     let mut renderer = Renderer::new(&mut decoder, &gpu.device, &gpu.queue);
     let source = renderer
@@ -176,7 +193,10 @@ fn release_source_invalidates_cache_and_fails_unknown_source() {
 
 #[test]
 fn end_of_stream_propagates_as_decode_error() {
-    let gpu = headless_gpu();
+    let Some(gpu) = headless_gpu() else {
+        eprintln!("skipping: no wgpu adapter available");
+        return;
+    };
     let mut decoder = FakeDecoder::new(FakeDecoderConfig {
         frame_rate: FrameRate::new(30, 1).unwrap(),
         width: 4,

@@ -2,9 +2,7 @@
 
 use std::sync::Arc;
 
-use decode::{
-    FakeDecoder, FakeDecoderConfig, PixelFormat, Source, SourceStreamId,
-};
+use decode::{Decoder, FakeDecoder, FakeDecoderConfig, PixelFormat, Source, SourceStreamId};
 use render::pixels::readback_rgba8;
 use render::{
     Affine, Blend, Crop, Node, NodeId, Opacity, Output, OutputFormat, RenderPlan, Renderer,
@@ -12,20 +10,25 @@ use render::{
 };
 use time::{FrameRate, RationalTime};
 
-fn headless_gpu() -> (wgpu::Device, wgpu::Queue) {
+/// See `plan.rs::headless_gpu` for the adapter selection rationale.
+fn headless_gpu() -> Option<(wgpu::Device, wgpu::Queue)> {
     pollster::block_on(async {
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::VULKAN | wgpu::Backends::GL,
-            ..Default::default()
-        });
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::LowPower,
-                force_fallback_adapter: true,
-                compatible_surface: None,
-            })
-            .await
-            .expect("adapter");
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::from_env_or_default());
+        let mut adapter = None;
+        for force_fallback_adapter in [true, false] {
+            adapter = instance
+                .request_adapter(&wgpu::RequestAdapterOptions {
+                    power_preference: wgpu::PowerPreference::LowPower,
+                    force_fallback_adapter,
+                    compatible_surface: None,
+                })
+                .await
+                .ok();
+            if adapter.is_some() {
+                break;
+            }
+        }
+        let adapter = adapter?;
         adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some("compose_test_device"),
@@ -35,7 +38,7 @@ fn headless_gpu() -> (wgpu::Device, wgpu::Queue) {
                 trace: wgpu::Trace::Off,
             })
             .await
-            .expect("device")
+            .ok()
     })
 }
 
@@ -86,13 +89,16 @@ fn center_pixel(pixels: &[u8], width: u32, height: u32) -> [u8; 4] {
 #[test]
 #[ignore = "requires GPU; run with --features wgpu-tests -- --ignored"]
 fn single_opaque_node_fills_output_with_source_color() {
-    let (device, queue) = headless_gpu();
+    let Some((device, queue)) = headless_gpu() else {
+        eprintln!("skipping: no wgpu adapter available");
+        return;
+    };
     let mut decoder = decoder_with_color([200, 40, 60, 255], 8);
     let mut renderer = Renderer::new(&mut decoder, &device, &queue);
     let source = renderer
         .register_source(&Source::Bytes(Arc::from([0u8; 0])))
         .unwrap();
-    let stream = decoder.streams(source).unwrap()[0].id;
+    let stream = SourceStreamId::new(1);
 
     let plan = RenderPlan {
         output: output_8x8(),
@@ -124,26 +130,41 @@ fn single_opaque_node_fills_output_with_source_color() {
 #[test]
 #[ignore = "requires GPU; run with --features wgpu-tests -- --ignored"]
 fn two_stacked_nodes_blend_with_half_opacity() {
-    let (device, queue) = headless_gpu();
-    let mut bottom = decoder_with_color([100, 0, 0, 255], 8);
-    let mut top = decoder_with_color([0, 0, 200, 255], 8);
+    let Some((device, queue)) = headless_gpu() else {
+        eprintln!("skipping: no wgpu adapter available");
+        return;
+    };
+    let bottom = decoder_with_color([100, 0, 0, 255], 8);
+    let top = decoder_with_color([0, 0, 200, 255], 8);
 
+    /// Routes the first `open` to `bottom` and every later one to `top`. Each inner
+    /// FakeDecoder numbers its sources from 1, so `top` ids are offset to stay unique.
     struct TwoDecoder {
         bottom: FakeDecoder,
         top: FakeDecoder,
-        mapping: std::collections::HashMap<u64, bool>,
+        opened: usize,
     }
 
-    impl decode::Decoder for TwoDecoder {
-        fn open(&mut self, source: &Source) -> Result<decode::SourceId, decode::DecodeError> {
-            if self.mapping.is_empty() {
-                let id = self.bottom.open(source)?;
-                self.mapping.insert(id.raw(), false);
-                Ok(id)
+    const TOP_ID_OFFSET: u64 = 1_000;
+
+    impl TwoDecoder {
+        fn route(&self, source: decode::SourceId) -> (bool, decode::SourceId) {
+            if source.raw() >= TOP_ID_OFFSET {
+                (true, decode::SourceId::new(source.raw() - TOP_ID_OFFSET))
             } else {
-                let id = self.top.open(source)?;
-                self.mapping.insert(id.raw(), true);
-                Ok(id)
+                (false, source)
+            }
+        }
+    }
+
+    impl Decoder for TwoDecoder {
+        fn open(&mut self, source: &Source) -> Result<decode::SourceId, decode::DecodeError> {
+            self.opened += 1;
+            if self.opened == 1 {
+                self.bottom.open(source)
+            } else {
+                let inner = self.top.open(source)?;
+                Ok(decode::SourceId::new(inner.raw() + TOP_ID_OFFSET))
             }
         }
 
@@ -151,10 +172,9 @@ fn two_stacked_nodes_blend_with_half_opacity() {
             &self,
             source: decode::SourceId,
         ) -> Result<Vec<decode::SourceStream>, decode::DecodeError> {
-            if *self.mapping.get(&source.raw()).unwrap_or(&false) {
-                self.top.streams(source)
-            } else {
-                self.bottom.streams(source)
+            match self.route(source) {
+                (true, inner) => self.top.streams(inner),
+                (false, inner) => self.bottom.streams(inner),
             }
         }
 
@@ -164,18 +184,16 @@ fn two_stacked_nodes_blend_with_half_opacity() {
             stream: decode::SourceStreamId,
             time: time::RationalTime,
         ) -> Result<decode::Frame, decode::DecodeError> {
-            if *self.mapping.get(&source.raw()).unwrap_or(&false) {
-                self.top.read_frame(source, stream, time)
-            } else {
-                self.bottom.read_frame(source, stream, time)
+            match self.route(source) {
+                (true, inner) => self.top.read_frame(inner, stream, time),
+                (false, inner) => self.bottom.read_frame(inner, stream, time),
             }
         }
 
         fn close(&mut self, source: decode::SourceId) -> Result<(), decode::DecodeError> {
-            if *self.mapping.get(&source.raw()).unwrap_or(&false) {
-                self.top.close(source)
-            } else {
-                self.bottom.close(source)
+            match self.route(source) {
+                (true, inner) => self.top.close(inner),
+                (false, inner) => self.bottom.close(inner),
             }
         }
     }
@@ -183,7 +201,7 @@ fn two_stacked_nodes_blend_with_half_opacity() {
     let mut decoder = TwoDecoder {
         bottom,
         top,
-        mapping: std::collections::HashMap::new(),
+        opened: 0,
     };
     let mut renderer = Renderer::new(&mut decoder, &device, &queue);
     let bottom_source = renderer
@@ -192,8 +210,8 @@ fn two_stacked_nodes_blend_with_half_opacity() {
     let top_source = renderer
         .register_source(&Source::Bytes(Arc::from([2u8; 0])))
         .unwrap();
-    let bottom_stream = decoder.streams(bottom_source).unwrap()[0].id;
-    let top_stream = decoder.streams(top_source).unwrap()[0].id;
+    let bottom_stream = SourceStreamId::new(1);
+    let top_stream = SourceStreamId::new(1);
 
     let plan = RenderPlan {
         output: output_8x8(),
@@ -248,14 +266,62 @@ fn two_stacked_nodes_blend_with_half_opacity() {
 #[test]
 #[ignore = "requires GPU; run with --features wgpu-tests -- --ignored"]
 fn cropped_node_renders_only_cropped_region() {
-    let (device, queue) = headless_gpu();
-    let mut decoder = decoder_with_color([0, 180, 0, 255], 8);
+    let Some((device, queue)) = headless_gpu() else {
+        eprintln!("skipping: no wgpu adapter available");
+        return;
+    };
+
+    /// 8x8 frame: left half red, right half green.
+    struct HalfDecoder {
+        inner: FakeDecoder,
+    }
+
+    impl Decoder for HalfDecoder {
+        fn open(&mut self, source: &Source) -> Result<decode::SourceId, decode::DecodeError> {
+            self.inner.open(source)
+        }
+
+        fn streams(
+            &self,
+            source: decode::SourceId,
+        ) -> Result<Vec<decode::SourceStream>, decode::DecodeError> {
+            self.inner.streams(source)
+        }
+
+        fn read_frame(
+            &mut self,
+            source: decode::SourceId,
+            stream: decode::SourceStreamId,
+            time: time::RationalTime,
+        ) -> Result<decode::Frame, decode::DecodeError> {
+            let mut frame = self.inner.read_frame(source, stream, time)?;
+            let width = frame.width as usize;
+            for (i, px) in frame.pixels.chunks_exact_mut(4).enumerate() {
+                let x = i % width;
+                px.copy_from_slice(if x < width / 2 {
+                    &[255, 0, 0, 255]
+                } else {
+                    &[0, 180, 0, 255]
+                });
+            }
+            Ok(frame)
+        }
+
+        fn close(&mut self, source: decode::SourceId) -> Result<(), decode::DecodeError> {
+            self.inner.close(source)
+        }
+    }
+
+    let mut decoder = HalfDecoder {
+        inner: decoder_with_color([0, 0, 0, 255], 8),
+    };
     let mut renderer = Renderer::new(&mut decoder, &device, &queue);
     let source = renderer
         .register_source(&Source::Bytes(Arc::from([0u8; 0])))
         .unwrap();
-    let stream = decoder.streams(source).unwrap()[0].id;
+    let stream = SourceStreamId::new(1);
 
+    // Crop the green right half and place it at the output origin at 1:1.
     let plan = RenderPlan {
         output: output_8x8(),
         nodes: vec![Node {
@@ -267,11 +333,11 @@ fn cropped_node_renders_only_cropped_region() {
             },
             crop: Crop {
                 x: 4,
-                y: 4,
+                y: 0,
                 w: 4,
-                h: 4,
+                h: 8,
             },
-            transform: fill_affine(4, 4, 8, 8),
+            transform: fill_affine(4, 8, 4, 8),
             opacity: Opacity::new(1.0).unwrap(),
             blend: Blend::SourceOver,
         }],
@@ -279,23 +345,31 @@ fn cropped_node_renders_only_cropped_region() {
 
     let out = renderer.render(&plan).unwrap();
     let pixels = readback_rgba8(&out.texture, &device, &queue, 8, 8).unwrap();
+    let px = |x: usize, y: usize| -> [u8; 4] {
+        pixels[(y * 8 + x) * 4..][..4].try_into().unwrap()
+    };
 
-    let corner = pixels[0..4].try_into().unwrap();
-    let center = center_pixel(&pixels, 8, 8);
-    assert_eq!(corner, [0, 0, 0, 0]);
-    assert_eq!(center, [0, 180, 0, 255]);
+    // Inside the placed crop: green proves we sampled from x >= 4, not from x = 0.
+    assert_eq!(px(0, 0), [0, 180, 0, 255]);
+    assert_eq!(px(3, 7), [0, 180, 0, 255]);
+    // Outside the crop's extent: untouched.
+    assert_eq!(px(4, 0), [0, 0, 0, 0]);
+    assert_eq!(px(7, 7), [0, 0, 0, 0]);
 }
 
 #[test]
 #[ignore = "requires GPU; run with --features wgpu-tests -- --ignored"]
 fn affine_transform_maps_source_to_expected_output_rectangle() {
-    let (device, queue) = headless_gpu();
+    let Some((device, queue)) = headless_gpu() else {
+        eprintln!("skipping: no wgpu adapter available");
+        return;
+    };
     let mut decoder = decoder_with_color([10, 20, 30, 255], 8);
     let mut renderer = Renderer::new(&mut decoder, &device, &queue);
     let source = renderer
         .register_source(&Source::Bytes(Arc::from([0u8; 0])))
         .unwrap();
-    let stream = decoder.streams(source).unwrap()[0].id;
+    let stream = SourceStreamId::new(1);
 
     let plan = RenderPlan {
         output: output_8x8(),

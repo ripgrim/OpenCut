@@ -25,7 +25,10 @@ pub enum OutputFormat {
 pub struct Node {
     pub id: NodeId,
     pub source: SourceRef,
+    /// Region of the decoded frame this node shows, in source pixels.
     pub crop: Crop,
+    /// Maps crop-local pixel coordinates (`0..crop.w`, `0..crop.h`) to output pixel
+    /// coordinates. Identity places the cropped region at the output origin at 1:1.
     pub transform: Affine,
     pub opacity: Opacity,
     pub blend: Blend,
@@ -55,6 +58,7 @@ pub struct Crop {
     pub h: u32,
 }
 
+/// Row-vector affine `[a, b, c, d, e, f]`: `x' = a*x + c*y + e`, `y' = b*x + d*y + f`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Affine {
     pub m: [f32; 6],

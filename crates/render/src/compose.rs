@@ -100,19 +100,20 @@ fn composite_layer(dst: &mut [u8], output: &Output, layer: &Layer) {
         Err(()) => return,
     };
 
+    let crop_w = layer.crop.w as f32;
+    let crop_h = layer.crop.h as f32;
+
     for oy in 0..out_h {
         for ox in 0..out_w {
-            let (sx, sy) = apply_affine(inv, ox as f32, oy as f32);
-            if sx < layer.crop.x as f32
-                || sy < layer.crop.y as f32
-                || sx >= (layer.crop.x + layer.crop.w) as f32
-                || sy >= (layer.crop.y + layer.crop.h) as f32
-            {
+            // `transform` maps crop-local pixels (0..crop.w, 0..crop.h) onto the output,
+            // so the inverse lands in crop-local space; offset by the crop origin to sample.
+            let (lx, ly) = apply_affine(inv, ox as f32, oy as f32);
+            if lx < 0.0 || ly < 0.0 || lx >= crop_w || ly >= crop_h {
                 continue;
             }
 
-            let src_x = sx.floor() as u32;
-            let src_y = sy.floor() as u32;
+            let src_x = layer.crop.x + lx.floor() as u32;
+            let src_y = layer.crop.y + ly.floor() as u32;
             if src_x >= layer.width || src_y >= layer.height {
                 continue;
             }
