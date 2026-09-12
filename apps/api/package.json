@@ -8,10 +8,10 @@
     "build": "wrangler deploy --dry-run"
   },
   "dependencies": {
-    "elysia": "latest"
+    "elysia": "^1.4.30"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "latest",
-    "wrangler": "latest"
+    "@cloudflare/workers-types": "^5.20260911.1",
+    "wrangler": "^4.131.1"
   }
 }
